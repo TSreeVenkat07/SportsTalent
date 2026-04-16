@@ -1,0 +1,38 @@
+# ══════════════════════════════════════
+# SportTalentHunt — .gitignore
+# ══════════════════════════════════════
+
+# Secrets (NEVER commit)
+secrets/
+!.env.example
+!secrets/.env.example
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Node
+node_modules/
+frontend/dist/
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+
+# Uploads (user-generated, not in repo)
+backend/uploads/

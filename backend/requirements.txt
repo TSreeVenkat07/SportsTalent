@@ -1,0 +1,19 @@
+flask>=3.0
+flask-jwt-extended>=4.6
+flask-cors>=4.0
+flask-limiter>=3.5
+python-dotenv>=1.0
+gunicorn>=21.2
+bcrypt>=4.1
+bleach>=6.1
+# Supabase
+supabase>=2.3
+# AI
+anthropic>=0.18
+# Video Analysis
+mediapipe>=0.10
+opencv-python-headless>=4.9
+numpy>=1.26
+# Email
+resend>=0.7
+python-json-logger>=2.0

@@ -1,0 +1,27 @@
+services:
+  # ── Backend: Flask REST API ──
+  - type: web
+    name: sporttalentsystem-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: FLASK_APP
+        value: app.py
+      - key: FLASK_DEBUG
+        value: false
+
+  # ── Frontend: React/Vite Static Site ──
+  - type: static_site
+    name: sporttalentsystem-frontend
+    env: node
+    buildCommand: npm install && npm run build
+    publishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: sporttalentsystem-backend
+          property: host
