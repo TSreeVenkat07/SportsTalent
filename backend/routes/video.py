@@ -55,19 +55,37 @@ def upload_video():
 
     # 🚀 Senior Production Fix: Use Supabase Storage for Persistence on Render
     try:
-        file_extension = video.filename.split('.')[-1] if '.' in video.filename else 'mp4'
+        import tempfile
         import hashlib
-        file_bytes = video.read()
-        file_hash = hashlib.sha256(file_bytes).hexdigest()
+        
+        file_extension = video.filename.split('.')[-1] if '.' in video.filename else 'mp4'
+        
+        # Save to a temporary file to avoid loading large videos entirely into RAM
+        fd, temp_path = tempfile.mkstemp(suffix=f".{file_extension}")
+        
+        # Stream file and calculate hash simultaneously
+        hasher = hashlib.sha256()
+        with os.fdopen(fd, 'wb') as out_file:
+            while chunk := video.read(8192):
+                hasher.update(chunk)
+                out_file.write(chunk)
+                
+        file_hash = hasher.hexdigest()
         storage_path = f"{user_id}/{file_hash}.{file_extension}"
         
-        # Upload to 'athlete-videos' bucket
+        # Upload to 'athlete-videos' bucket using the temp file path
         # Note: We use upsert=True to avoid conflicts if the same user uploads the same file twice
         supabase.storage.from_('athlete-videos').upload(
             path=storage_path,
-            file=file_bytes,
+            file=temp_path,
             file_options={"content-type": video.content_type, "upsert": "true"}
         )
+        
+        # Cleanup temporary file
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
         
         # Get Public URL (Ensure the bucket is public in Supabase Dashboard)
         video_url = supabase.storage.from_('athlete-videos').get_public_url(storage_path)
