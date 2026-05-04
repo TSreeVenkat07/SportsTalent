@@ -1,4 +1,6 @@
 import os
+import tempfile
+import hashlib
 from flask import Blueprint, request, jsonify, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 import uuid
@@ -53,41 +55,34 @@ def upload_video():
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
 
-    # 🚀 Senior Production Fix: Use Supabase Storage for Persistence on Render
+    # 🚀 Senior Production Fix: Use Disk Streaming for Persistence on Render
+    temp_path = None
     try:
-        import tempfile
-        import hashlib
-        
         file_extension = video.filename.split('.')[-1] if '.' in video.filename else 'mp4'
         
-        # Save to a temporary file to avoid loading large videos entirely into RAM
-        fd, temp_path = tempfile.mkstemp(suffix=f".{file_extension}")
+        # 1. Save to a temporary file to keep RAM usage constant
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as tmp:
+            video.save(tmp.name)
+            temp_path = tmp.name
         
-        # Stream file and calculate hash simultaneously
-        hasher = hashlib.sha256()
-        with os.fdopen(fd, 'wb') as out_file:
-            while chunk := video.read(8192):
-                hasher.update(chunk)
-                out_file.write(chunk)
-                
-        file_hash = hasher.hexdigest()
+        # 2. Calculate SHA256 in chunks (64KB blocks)
+        sha256_hash = hashlib.sha256()
+        with open(temp_path, "rb") as f:
+            for byte_block in iter(lambda: f.read(65536), b""):
+                sha256_hash.update(byte_block)
+        file_hash = sha256_hash.hexdigest()
+        
         storage_path = f"{user_id}/{file_hash}.{file_extension}"
         
-        # Upload to 'athlete-videos' bucket using the temp file path
-        # Note: We use upsert=True to avoid conflicts if the same user uploads the same file twice
-        supabase.storage.from_('athlete-videos').upload(
-            path=storage_path,
-            file=temp_path,
-            file_options={"content-type": video.content_type, "upsert": "true"}
-        )
+        # 3. Stream the file directly from disk to Supabase
+        with open(temp_path, "rb") as f:
+            supabase.storage.from_('athlete-videos').upload(
+                path=storage_path,
+                file=f,
+                file_options={"content-type": video.content_type, "upsert": "true"}
+            )
         
-        # Cleanup temporary file
-        try:
-            os.remove(temp_path)
-        except OSError:
-            pass
-        
-        # Get Public URL (Ensure the bucket is public in Supabase Dashboard)
+        # 4. Get Public URL
         video_url = supabase.storage.from_('athlete-videos').get_public_url(storage_path)
 
         # 🪄 Master Sync: Return cloud URL as primary source
@@ -100,8 +95,13 @@ def upload_video():
         
     except Exception as e:
         print(f"❌ SUPABASE STORAGE ERROR: {str(e)}")
-        # Production Hardening: Fail fast if cloud storage is unavailable
-        return jsonify({'error': f"Cloud storage synchronization failed: {str(e)}. Please check SUPABASE_KEY."}), 500
+        return jsonify({'error': f"Cloud storage synchronization failed: {str(e)}"}), 500
+    finally:
+        # 5. Clean up temporary file
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except: pass
 
 
 @video_bp.route('/feed', methods=['GET'])
