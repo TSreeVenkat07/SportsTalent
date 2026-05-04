@@ -487,9 +487,8 @@ def save_video():
 
     import json
     
-    # Attempt 1: Full insert with native dict/list (JSONB columns)
     try:
-        print(f"DEBUG: Attempting to save video for athlete {user_id} (Attempt 1: native)")
+        print(f"DEBUG: Attempting to save video for athlete {user_id}")
         sub_data = {
             'athlete_id': user_id,
             'video_url': data['video_url'],
@@ -502,75 +501,10 @@ def save_video():
         res = supabase.table('feed_videos').insert(sub_data).execute()
         if res.data:
             return jsonify({'message': 'Video saved successfully', 'id': res.data[0]['id']}), 201
-    except Exception as e1:
-        print(f"DEBUG: Attempt 1 failed: {e1}")
-    
-    # Attempt 2: Stringified JSON (text columns)
-    try:
-        print(f"DEBUG: Attempting save (Attempt 2: stringified JSON)")
-        sub_data = {
-            'athlete_id': user_id,
-            'video_url': data['video_url'],
-            'exercise': data['exercise'],
-            'ai_score': data.get('overall', 0),
-            'ai_breakdown': json.dumps(data.get('breakdown', {})),
-            'ai_feedback': json.dumps(data.get('feedback', [])),
-            'visibility': 'public'
-        }
-        res = supabase.table('feed_videos').insert(sub_data).execute()
-        if res.data:
-            return jsonify({'message': 'Video saved successfully', 'id': res.data[0]['id']}), 201
-    except Exception as e2:
-        print(f"DEBUG: Attempt 2 failed: {e2}")
-    
-    # Attempt 3: Minimal insert without AI breakdown/feedback columns
-    try:
-        print(f"DEBUG: Attempting save (Attempt 3: minimal columns)")
-        sub_data = {
-            'athlete_id': user_id,
-            'video_url': data['video_url'],
-            'exercise': data['exercise'],
-            'ai_score': data.get('overall', 0),
-            'visibility': 'public'
-        }
-        res = supabase.table('feed_videos').insert(sub_data).execute()
-        if res.data:
-            return jsonify({'message': 'Video saved (minimal mode)', 'id': res.data[0]['id']}), 201
-    except Exception as e3:
-        print(f"DEBUG: Attempt 3 failed: {e3}")
-    
-    # Attempt 4: Try with exercise_name instead of exercise
-    try:
-        print(f"DEBUG: Attempting save (Attempt 4: exercise_name column)")
-        sub_data = {
-            'athlete_id': user_id,
-            'video_url': data['video_url'],
-            'exercise_name': data['exercise'],
-            'ai_score': data.get('overall', 0),
-            'visibility': 'public'
-        }
-        res = supabase.table('feed_videos').insert(sub_data).execute()
-        if res.data:
-            return jsonify({'message': 'Video saved (exercise_name mode)', 'id': res.data[0]['id']}), 201
-    except Exception as e4:
-        print(f"DEBUG: Attempt 4 failed: {e4}")
-    
-    # Attempt 5: Final desperate attempt with minimal fields and user_id instead of athlete_id
-    try:
-        print(f"DEBUG: Attempting save (Attempt 5: user_id column fallback)")
-        sub_data = {
-            'user_id': user_id,
-            'video_url': data['video_url'],
-            'exercise': data['exercise'],
-            'ai_score': data.get('overall', 0)
-        }
-        res = supabase.table('feed_videos').insert(sub_data).execute()
-        if res.data:
-            return jsonify({'message': 'Video saved (user_id fallback)', 'id': res.data[0]['id']}), 201
-    except Exception as e5:
-        print(f"CRITICAL: All save attempts failed. Last error: {e5}")
-    
-    return jsonify({'error': 'Failed to save video. Check database schema for feed_videos table.'}), 500
+        return jsonify({'error': 'Failed to save video (no data returned from Supabase).'}), 500
+    except Exception as e:
+        print(f"CRITICAL: Failed to save video to feed_videos table. Error: {e}")
+        return jsonify({'error': f'Failed to save video: {str(e)}'}), 500
 
 
 @video_bp.route('/submissions/<athlete_id>', methods=['GET'])

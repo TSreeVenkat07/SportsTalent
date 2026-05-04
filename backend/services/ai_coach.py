@@ -6,9 +6,14 @@ Each call is completely independent — no DB access, no history, no cross-conta
 import json
 import os
 
-# In production, uncomment:
-import anthropic
+try:
+    import anthropic
+    HAS_ANTHROPIC = True
+except ImportError:
+    HAS_ANTHROPIC = False
+
 from config import Config
+
 
 def ai_verify_coach(application: dict) -> dict:
     """
@@ -17,29 +22,57 @@ def ai_verify_coach(application: dict) -> dict:
     Each call is independent and isolated.
     """
     prompt = f"""
-... (rest of the prompt)
+You are a sports coach verification system for SportTalentHunt,
+a platform discovering rural athletic talent in India.
+
+Review this ONE application. You have NO context of past decisions.
+Return ONLY valid JSON, no explanation, no markdown.
+
+APPLICATION:
+Name: {application.get('name', 'Unknown')}
+Sport: {application.get('sport', 'Unknown')}
+Experience: {application.get('years', 0)} years
+Organisation: {application.get('org', 'Unknown')}
+Certificate body: {application.get('cert_text', 'No certificate provided')}
+Personal statement: {application.get('statement', 'No statement provided')}
+
+Known legitimate Indian sports bodies:
+SAI, NIS Patiala, BCCI, AIFF, AFI, Hockey India,
+Wrestling Federation of India, state sports authorities,
+Khelo India centres, district sports offices, NSFs.
+
+Return this exact JSON:
+{{
+  "score": <integer 0-100>,
+  "decision": "<approve|reject|review>",
+  "cert_valid": <true|false|null>,
+  "org_recognized": <true|false|null>,
+  "statement_genuine": <true|false>,
+  "experience_plausible": <true|false>,
+  "red_flags": [<list of strings>],
+  "reason": "<one sentence max>"
+}}
+
+Score rules:
+- 80-100 → approve (auto-grant coach role)
+- 30-79  → review  (send to human admin)
+- 0-29   → reject  (deny immediately)
+- If uncertain about ANYTHING → score ≤ 70
+- Any red flag present → score cannot exceed 75
 """
 
     try:
-        # 🪄 Master Config: Using centralized credentials
         api_key = Config.ANTHROPIC_API_KEY
-        if not api_key:
+        if not api_key or not HAS_ANTHROPIC:
             return _demo_verify(application)
 
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
-            model="claude-3-sonnet-20240229", # Optimized master model
+            model="claude-3-sonnet-20240229",
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}]
         )
         return json.loads(response.content[0].text)
-
-    except Exception as e:
-        print(f"AI verification error: {e}")
-        return _demo_verify(application)
-
-        # Demo fallback
-        return _demo_verify(application)
 
     except Exception as e:
         print(f"AI verification error: {e}")
@@ -51,11 +84,9 @@ def _demo_verify(application: dict) -> dict:
     org = application.get('org', '').lower()
     years = int(application.get('years', 0))
 
-    # Simple rule-based scoring for demo
     score = 50
     red_flags = []
 
-    # Check org
     known_orgs = ['sai', 'nis', 'bcci', 'aiff', 'afi', 'hockey india',
                   'sports authority', 'khelo india', 'district sports']
     org_recognized = any(k in org for k in known_orgs)
@@ -64,13 +95,11 @@ def _demo_verify(application: dict) -> dict:
     else:
         red_flags.append('Organisation not in known list')
 
-    # Check experience
     if years >= 5:
         score += 10
     if years >= 10:
         score += 5
 
-    # Check statement length
     statement = application.get('statement', '')
     if len(statement) > 100:
         score += 5
@@ -78,11 +107,9 @@ def _demo_verify(application: dict) -> dict:
         red_flags.append('Statement too short')
         score -= 10
 
-    # Cap score if red flags exist
     if red_flags and score > 75:
         score = 75
 
-    # Determine decision
     if score >= 80:
         decision = 'approve'
     elif score >= 30:
